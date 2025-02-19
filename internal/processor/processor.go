@@ -108,16 +108,56 @@ func createAbsoluteURL(uri string, base *nurl.URL) string {
 	return base.ResolveReference(tmp).String()
 }
 
+type QueryKeyValue struct {
+	Key string
+	Raw string
+}
+
+func parseQuery(query string) (queries []QueryKeyValue, err error) {
+	for query != "" {
+		var seg string
+		seg, query, _ = strings.Cut(query, "&")
+		if strings.Contains(seg, ";") {
+			err = fmt.Errorf("invalid semicolon separator in query")
+			continue
+		}
+		if seg == "" {
+			continue
+		}
+		rawKey, _, _ := strings.Cut(seg, "=")
+		key, err1 := nurl.QueryUnescape(rawKey)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+
+		q := QueryKeyValue{
+			Key: key,
+			Raw: seg,
+		}
+		queries = append(queries, q)
+	}
+	return
+}
+
 // cleanURL removes fragment (#fragment) and UTM queries from URL
 func cleanURL(url *nurl.URL) {
-	queries := url.Query()
+	queries, err := parseQuery(url.RawQuery)
+	if err != nil {
+		return
+	}
 
-	for key := range queries {
-		if strings.HasPrefix(key, "utm_") {
-			queries.Del(key)
+	var rawSegments []string
+
+	for _, q := range queries {
+		if strings.HasPrefix(q.Key, "utm_") {
+			continue
 		}
+		rawSegments = append(rawSegments, q.Raw)
 	}
 
 	url.Fragment = ""
-	url.RawQuery = queries.Encode()
+	url.RawQuery = strings.Join(rawSegments, "&")
 }
